@@ -864,18 +864,44 @@ def singing_generate(
     backend,
     style_prompt,
     midi_or_notes,
-    midi_file,
-    phoneme_language,
-    phoneme_text,
-    vibrato,
-    breathiness,
-    tension,
-    energy,
-    gender,
-    portamento,
-    tempo_bpm,
-    rvc_model_name,
+    *extra_args,
 ):
+    # Compatibilidad hacia atrás:
+    # - firma vieja: (vibrato, breathiness, tension, energy, gender, portamento, rvc_model_name)
+    # - firma nueva: (midi_file, phoneme_language, phoneme_text, vibrato, breathiness, tension, energy, gender, portamento, tempo_bpm, rvc_model_name)
+    midi_file = ""
+    phoneme_language = "auto"
+    phoneme_text = ""
+    tempo_bpm = 120
+    rvc_model_name = ""
+
+    if len(extra_args) >= 11:
+        (
+            midi_file,
+            phoneme_language,
+            phoneme_text,
+            vibrato,
+            breathiness,
+            tension,
+            energy,
+            gender,
+            portamento,
+            tempo_bpm,
+            rvc_model_name,
+        ) = extra_args[:11]
+    else:
+        default_legacy = (0.3, 0.2, 0.2, 0.5, 0.0, 0.3, "")
+        legacy_values = tuple(extra_args[:7]) + default_legacy[len(extra_args[:7]) :]
+        (
+            vibrato,
+            breathiness,
+            tension,
+            energy,
+            gender,
+            portamento,
+            rvc_model_name,
+        ) = legacy_values
+
     midi_path = midi_file if isinstance(midi_file, str) else ""
     request = SingingRequest(
         lyrics=lyrics,
