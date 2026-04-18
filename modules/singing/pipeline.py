@@ -82,6 +82,8 @@ class SingingPipeline:
             f"Phoneme preview: {phoneme_preview[:180]}\n"
             f"Notes parsed: {len(notes)} (first: {notes[:5]})"
         )
+        if request.midi_path and not mido:
+            debug += "\n⚠️ MIDI parser not available: install `mido` to parse uploaded MIDI files."
         return status, str(output_path), debug
 
     def _resolve_note_events(self, request: SingingRequest) -> Tuple[List[Tuple[float, float]], str]:
