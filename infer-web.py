@@ -864,6 +864,45 @@ def singing_generate(
     backend,
     style_prompt,
     midi_or_notes,
+    *extra_args,
+):
+    # Compatibilidad hacia atrás:
+    # - firma vieja: (vibrato, breathiness, tension, energy, gender, portamento, rvc_model_name)
+    # - firma nueva: (midi_file, phoneme_language, phoneme_text, vibrato, breathiness, tension, energy, gender, portamento, tempo_bpm, rvc_model_name)
+    midi_file = ""
+    phoneme_language = "auto"
+    phoneme_text = ""
+    tempo_bpm = 120
+    rvc_model_name = ""
+
+    if len(extra_args) >= 11:
+        (
+            midi_file,
+            phoneme_language,
+            phoneme_text,
+            vibrato,
+            breathiness,
+            tension,
+            energy,
+            gender,
+            portamento,
+            tempo_bpm,
+            rvc_model_name,
+        ) = extra_args[:11]
+    else:
+        default_legacy = (0.3, 0.2, 0.2, 0.5, 0.0, 0.3, "")
+        legacy_values = tuple(extra_args[:7]) + default_legacy[len(extra_args[:7]) :]
+        (
+            vibrato,
+            breathiness,
+            tension,
+            energy,
+            gender,
+            portamento,
+            rvc_model_name,
+        ) = legacy_values
+
+    midi_path = midi_file if isinstance(midi_file, str) else ""
     vibrato,
     breathiness,
     tension,
@@ -877,14 +916,42 @@ def singing_generate(
         backend=backend,
         style_prompt=style_prompt,
         midi_or_notes=midi_or_notes,
+        midi_path=midi_path,
+        phoneme_language=phoneme_language,
+        phoneme_text=phoneme_text,
         vibrato=vibrato,
         breathiness=breathiness,
         tension=tension,
         energy=energy,
         gender=gender,
         portamento=portamento,
+        tempo_bpm=tempo_bpm,
     )
     return singing_pipeline.synthesize(request, rvc_model_name)
+
+
+def singing_load_preset(preset_name):
+    presets = {
+        "Pop Hook": (
+            "Este es mi SynthRVC, brillando en el beat.",
+            "C4:0.5 E4:0.5 G4:0.5 A4:0.5 G4:0.5 E4:0.5 D4:1.0",
+            "pop femenino emotivo",
+        ),
+        "Rap Flow": (
+            "Barras rápidas, energía arriba, ritmo agresivo.",
+            "A3:0.25 A3:0.25 C4:0.25 D4:0.25 E4:0.5 D4:0.5",
+            "rap agresivo urbano",
+        ),
+        "Balada": (
+            "Luz en la noche, voz de cristal.",
+            "G3:0.8 A3:0.6 B3:0.8 D4:1.2 C4:1.0",
+            "balada lírica íntima",
+        ),
+    }
+    return presets.get(
+        preset_name,
+        ("", "C4:0.5 D4:0.5 E4:0.5", "canto pop"),
+    )
 
 
 with gr.Blocks(
@@ -1273,6 +1340,10 @@ with gr.Blocks(
                 [tts_status, tts_audio],
                 api_name="tts_generate_rvc",
             )
+        with gr.TabItem("SynthRVC • Text-to-Singing / AI Vocal Synth"):
+            gr.Markdown(
+                "### 🎼 SynthRVC: Vocaloid/UTAU-like AI Vocal Synth\n"
+                "Flujo moderno para canto: **lyrics + MIDI/notas + fonemas + estilo + timbre RVC**."
         with gr.TabItem("Text-to-Singing / AI Vocal Synth"):
             gr.Markdown(
                 "### 🎼 Text-to-Singing\n"
@@ -1286,6 +1357,15 @@ with gr.Blocks(
                         placeholder="Escribe la letra de la canción...",
                     )
                     singing_notes = gr.Textbox(
+                        label="Notas (fallback texto)",
+                        lines=6,
+                        placeholder="Ejemplo: C4:0.5 D4:0.5 E4:1.0 | o pega contenido parseado.",
+                    )
+                    singing_midi = gr.File(
+                        label="Subir archivo MIDI (.mid/.midi)",
+                        file_types=[".mid", ".midi"],
+                        type="filepath",
+                    )
                         label="Notas/MIDI/LAB/UST (texto simple por ahora)",
                         lines=6,
                         placeholder="Ejemplo: C4:0.5 D4:0.5 E4:1.0 | o pega contenido parseado.",
@@ -1294,6 +1374,30 @@ with gr.Blocks(
                         label="Prompt de estilo",
                         placeholder="canto pop femenino emotivo / rap agresivo / balada lírica",
                     )
+                    singing_phoneme_lang = gr.Dropdown(
+                        label="Idioma/fonemización",
+                        choices=["auto", "ja", "en", "es"],
+                        value="auto",
+                        interactive=True,
+                    )
+                    singing_phonemes = gr.Textbox(
+                        label="Fonemas manuales (opcional)",
+                        lines=3,
+                        placeholder="Ej: ka ki ku ke ko | tʃ a n dɾ a...",
+                    )
+                    singing_backend = gr.Dropdown(
+                        label="Backend Singing",
+                        choices=singing_pipeline.available_backends(),
+                        value="synthrvc_hybrid",
+                        interactive=True,
+                    )
+                    singing_preset = gr.Dropdown(
+                        label="Preset rápido",
+                        choices=["Pop Hook", "Rap Flow", "Balada"],
+                        value="Pop Hook",
+                        interactive=True,
+                    )
+                    singing_apply_preset = gr.Button("Aplicar preset", variant="secondary")
                     singing_backend = gr.Dropdown(
                         label="Backend Singing",
                         choices=singing_pipeline.available_backends(),
@@ -1307,6 +1411,7 @@ with gr.Blocks(
                     singing_energy = gr.Slider(0, 1, value=0.5, step=0.01, label="Energía")
                     singing_gender = gr.Slider(-1, 1, value=0, step=0.01, label="Gender tone")
                     singing_portamento = gr.Slider(0, 1, value=0.3, step=0.01, label="Portamento")
+                    singing_tempo = gr.Slider(60, 200, value=120, step=1, label="Tempo BPM (guía)")
                     singing_rvc_model = gr.Dropdown(
                         label="Aplicar timbre con RVC",
                         choices=sorted(names),
@@ -1317,6 +1422,7 @@ with gr.Blocks(
             with gr.Row():
                 singing_status = gr.Textbox(label="Estado / Logs", lines=4)
                 singing_audio = gr.Audio(label="Salida Singing", type="filepath")
+            singing_debug = gr.Textbox(label="Debug (notas/fonemas)", lines=5)
             singing_generate_btn.click(
                 singing_generate,
                 [
@@ -1324,12 +1430,27 @@ with gr.Blocks(
                     singing_backend,
                     singing_style,
                     singing_notes,
+                    singing_midi,
+                    singing_phoneme_lang,
+                    singing_phonemes,
                     singing_vibrato,
                     singing_breathiness,
                     singing_tension,
                     singing_energy,
                     singing_gender,
                     singing_portamento,
+                    singing_tempo,
+                    singing_rvc_model,
+                ],
+                [singing_status, singing_audio, singing_debug],
+                api_name="singing_generate",
+            )
+            singing_apply_preset.click(
+                singing_load_preset,
+                [singing_preset],
+                [singing_lyrics, singing_notes, singing_style],
+                api_name="singing_apply_preset",
+            )
                     singing_rvc_model,
                 ],
                 [singing_status, singing_audio],
