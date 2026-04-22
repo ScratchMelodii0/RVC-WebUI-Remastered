@@ -910,7 +910,7 @@ def singing_generate(
     gender,
     portamento,
     rvc_model_name,
-):
+    )
     request = SingingRequest(
         lyrics=lyrics,
         backend=backend,
