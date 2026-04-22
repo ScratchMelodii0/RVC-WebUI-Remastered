@@ -7,6 +7,8 @@ sys.path.append(now_dir)
 load_dotenv()
 from infer.modules.vc.modules import VC
 from infer.modules.uvr5.modules import uvr
+from modules.tts import TTSPipeline, TTSRequest
+from modules.singing import SingingPipeline, SingingRequest
 from infer.lib.train.process_ckpt import (
     change_info,
     extract_small_model,
@@ -52,6 +54,10 @@ torch.manual_seed(114514)
 
 config = Config()
 vc = VC(config)
+tts_pipeline = TTSPipeline(output_root=os.path.join(now_dir, "assets/tts_models"))
+singing_pipeline = SingingPipeline(
+    output_root=os.path.join(now_dir, "assets/singing_models")
+)
 
 
 if config.dml == True:
@@ -806,8 +812,147 @@ def change_f0_method(f0method8):
     return {"visible": visible, "__type__": "update"}
 
 
-with gr.Blocks(title="RVC WebUI") as app:
-    gr.Markdown("## RVC WebUI")
+def tts_generate(
+    text,
+    backend,
+    speed,
+    pitch_shift,
+    style_prompt,
+    emotion,
+    pause_seconds,
+    use_ssml,
+):
+    request = TTSRequest(
+        text=text,
+        backend=backend,
+        speed=speed,
+        pitch_shift=pitch_shift,
+        style_prompt=style_prompt,
+        emotion=emotion,
+        pause_seconds=pause_seconds,
+        use_ssml=use_ssml,
+    )
+    return tts_pipeline.synthesize(request)
+
+
+def tts_generate_with_rvc(
+    text,
+    backend,
+    speed,
+    pitch_shift,
+    style_prompt,
+    emotion,
+    pause_seconds,
+    use_ssml,
+    rvc_model_name,
+):
+    request = TTSRequest(
+        text=text,
+        backend=backend,
+        speed=speed,
+        pitch_shift=pitch_shift,
+        style_prompt=style_prompt,
+        emotion=emotion,
+        pause_seconds=pause_seconds,
+        use_ssml=use_ssml,
+    )
+    return tts_pipeline.tts_to_rvc(request, rvc_model_name)
+
+
+def singing_generate(
+    lyrics,
+    backend,
+    style_prompt,
+    midi_or_notes,
+    *extra_args,
+):
+    # Compatibilidad hacia atrás:
+    # - firma vieja: (vibrato, breathiness, tension, energy, gender, portamento, rvc_model_name)
+    # - firma nueva: (midi_file, phoneme_language, phoneme_text, vibrato, breathiness, tension, energy, gender, portamento, tempo_bpm, rvc_model_name)
+    midi_file = ""
+    phoneme_language = "auto"
+    phoneme_text = ""
+    tempo_bpm = 120
+    rvc_model_name = ""
+
+    if len(extra_args) >= 11:
+        midi_file = extra_args[0]
+        phoneme_language = extra_args[1]
+        phoneme_text = extra_args[2]
+        vibrato = extra_args[3]
+        breathiness = extra_args[4]
+        tension = extra_args[5]
+        energy = extra_args[6]
+        gender = extra_args[7]
+        portamento = extra_args[8]
+        tempo_bpm = extra_args[9]
+        rvc_model_name = extra_args[10]
+    else:
+        default_legacy = [0.3, 0.2, 0.2, 0.5, 0.0, 0.3, ""]
+        legacy_values = list(extra_args[:7])
+        legacy_values.extend(default_legacy[len(legacy_values) :])
+        vibrato = legacy_values[0]
+        breathiness = legacy_values[1]
+        tension = legacy_values[2]
+        energy = legacy_values[3]
+        gender = legacy_values[4]
+        portamento = legacy_values[5]
+        rvc_model_name = legacy_values[6]
+
+    midi_path = midi_file if isinstance(midi_file, str) else ""
+    request = SingingRequest(
+        lyrics=lyrics,
+        backend=backend,
+        style_prompt=style_prompt,
+        midi_or_notes=midi_or_notes,
+        midi_path=midi_path,
+        phoneme_language=phoneme_language,
+        phoneme_text=phoneme_text,
+        vibrato=vibrato,
+        breathiness=breathiness,
+        tension=tension,
+        energy=energy,
+        gender=gender,
+        portamento=portamento,
+        tempo_bpm=tempo_bpm,
+    )
+    return singing_pipeline.synthesize(request, rvc_model_name)
+
+
+def singing_load_preset(preset_name):
+    presets = {
+        "Pop Hook": (
+            "Este es mi SynthRVC, brillando en el beat.",
+            "C4:0.5 E4:0.5 G4:0.5 A4:0.5 G4:0.5 E4:0.5 D4:1.0",
+            "pop femenino emotivo",
+        ),
+        "Rap Flow": (
+            "Barras rápidas, energía arriba, ritmo agresivo.",
+            "A3:0.25 A3:0.25 C4:0.25 D4:0.25 E4:0.5 D4:0.5",
+            "rap agresivo urbano",
+        ),
+        "Balada": (
+            "Luz en la noche, voz de cristal.",
+            "G3:0.8 A3:0.6 B3:0.8 D4:1.2 C4:1.0",
+            "balada lírica íntima",
+        ),
+    }
+    return presets.get(
+        preset_name,
+        ("", "C4:0.5 D4:0.5 E4:0.5", "canto pop"),
+    )
+
+
+with gr.Blocks(
+    title="RVC Remastered",
+    theme=gr.themes.Soft(
+        primary_hue="indigo", secondary_hue="blue", neutral_hue="slate"
+    ),
+) as app:
+    gr.Markdown("## 🎙️ RVC Remastered / RVC Studio")
+    gr.Markdown(
+        "Plataforma todo-en-uno para Voice Conversion, TTS y Singing Synthesis (open-source, local-first)."
+    )
     gr.Markdown(
         value=i18n(
             "本软件以MIT协议开源, 作者不对软件具备任何控制力, 使用软件者、传播软件导出的声音者自负全责. <br>如不认可该条款, 则不能使用或引用软件包内任何代码和文件. 详见根目录<b>LICENSE</b>."
@@ -1110,6 +1255,177 @@ with gr.Blocks(title="RVC WebUI") as app:
                     outputs=[spk_item, protect0, protect1, file_index2, file_index4],
                     api_name="infer_change_voice",
                 )
+        with gr.TabItem("Text-to-Speech"):
+            gr.Markdown(
+                "### 🗣️ Text-to-Speech (TTS)\n"
+                "Backends listos para integrar: Fish Speech, CosyVoice2, XTTS-v2, StyleTTS2, Kokoro, MeloTTS y fallback Edge-TTS."
+            )
+            with gr.Row():
+                with gr.Column():
+                    tts_text = gr.Textbox(
+                        label="Texto / SSML básico",
+                        lines=8,
+                        placeholder="Escribe aquí el texto a sintetizar...",
+                    )
+                    tts_backend = gr.Dropdown(
+                        label="Backend TTS",
+                        choices=tts_pipeline.available_backends(),
+                        value="edge_tts_fallback",
+                        interactive=True,
+                    )
+                    tts_style = gr.Textbox(
+                        label="Style prompt / emoción",
+                        placeholder="voz cálida, femenina, narrativa cinematográfica...",
+                    )
+                    tts_emotion = gr.Dropdown(
+                        label="Emoción base",
+                        choices=["neutral", "happy", "sad", "angry", "calm", "dramatic"],
+                        value="neutral",
+                    )
+                    tts_use_ssml = gr.Checkbox(label="Habilitar parsing SSML básico", value=False)
+                with gr.Column():
+                    tts_speed = gr.Slider(0.5, 2.0, value=1.0, step=0.05, label="Velocidad")
+                    tts_pitch = gr.Slider(-12, 12, value=0, step=1, label="Pitch shift (semitonos)")
+                    tts_pause = gr.Slider(0.0, 1.5, value=0.15, step=0.05, label="Pausa entre frases (s)")
+                    tts_rvc_model = gr.Dropdown(
+                        label="Modelo RVC destino (pipeline TTS→RVC)",
+                        choices=sorted(names),
+                        value=None,
+                        interactive=True,
+                    )
+                    tts_gen = gr.Button("Generar TTS", variant="primary")
+                    tts_gen_rvc = gr.Button("Generar TTS → RVC", variant="secondary")
+            with gr.Row():
+                tts_status = gr.Textbox(label="Estado / Logs", lines=4)
+                tts_audio = gr.Audio(label="Salida TTS", type="filepath")
+            tts_gen.click(
+                tts_generate,
+                [
+                    tts_text,
+                    tts_backend,
+                    tts_speed,
+                    tts_pitch,
+                    tts_style,
+                    tts_emotion,
+                    tts_pause,
+                    tts_use_ssml,
+                ],
+                [tts_status, tts_audio],
+                api_name="tts_generate",
+            )
+            tts_gen_rvc.click(
+                tts_generate_with_rvc,
+                [
+                    tts_text,
+                    tts_backend,
+                    tts_speed,
+                    tts_pitch,
+                    tts_style,
+                    tts_emotion,
+                    tts_pause,
+                    tts_use_ssml,
+                    tts_rvc_model,
+                ],
+                [tts_status, tts_audio],
+                api_name="tts_generate_rvc",
+            )
+        with gr.TabItem("SynthRVC • Text-to-Singing / AI Vocal Synth"):
+            gr.Markdown(
+                "### 🎼 SynthRVC: Vocaloid/UTAU-like AI Vocal Synth\n"
+                "Flujo moderno para canto: **lyrics + MIDI/notas + fonemas + estilo + timbre RVC**."
+            )
+            with gr.Row():
+                with gr.Column():
+                    singing_lyrics = gr.Textbox(
+                        label="Letra / lyrics",
+                        lines=8,
+                        placeholder="Escribe la letra de la canción...",
+                    )
+                    singing_notes = gr.Textbox(
+                        label="Notas (fallback texto)",
+                        lines=6,
+                        placeholder="Ejemplo: C4:0.5 D4:0.5 E4:1.0 | o pega contenido parseado.",
+                    )
+                    singing_midi = gr.File(
+                        label="Subir archivo MIDI (.mid/.midi)",
+                        file_types=[".mid", ".midi"],
+                        type="filepath",
+                    )
+                    singing_style = gr.Textbox(
+                        label="Prompt de estilo",
+                        placeholder="canto pop femenino emotivo / rap agresivo / balada lírica",
+                    )
+                    singing_phoneme_lang = gr.Dropdown(
+                        label="Idioma/fonemización",
+                        choices=["auto", "ja", "en", "es"],
+                        value="auto",
+                        interactive=True,
+                    )
+                    singing_phonemes = gr.Textbox(
+                        label="Fonemas manuales (opcional)",
+                        lines=3,
+                        placeholder="Ej: ka ki ku ke ko | tʃ a n dɾ a...",
+                    )
+                    singing_backend = gr.Dropdown(
+                        label="Backend Singing",
+                        choices=singing_pipeline.available_backends(),
+                        value="synthrvc_hybrid",
+                        interactive=True,
+                    )
+                    singing_preset = gr.Dropdown(
+                        label="Preset rápido",
+                        choices=["Pop Hook", "Rap Flow", "Balada"],
+                        value="Pop Hook",
+                        interactive=True,
+                    )
+                    singing_apply_preset = gr.Button("Aplicar preset", variant="secondary")
+                with gr.Column():
+                    singing_vibrato = gr.Slider(0, 1, value=0.3, step=0.01, label="Vibrato")
+                    singing_breathiness = gr.Slider(0, 1, value=0.2, step=0.01, label="Breathiness")
+                    singing_tension = gr.Slider(0, 1, value=0.2, step=0.01, label="Tensión")
+                    singing_energy = gr.Slider(0, 1, value=0.5, step=0.01, label="Energía")
+                    singing_gender = gr.Slider(-1, 1, value=0, step=0.01, label="Gender tone")
+                    singing_portamento = gr.Slider(0, 1, value=0.3, step=0.01, label="Portamento")
+                    singing_tempo = gr.Slider(60, 200, value=120, step=1, label="Tempo BPM (guía)")
+                    singing_rvc_model = gr.Dropdown(
+                        label="Aplicar timbre con RVC",
+                        choices=sorted(names),
+                        value=None,
+                        interactive=True,
+                    )
+                    singing_generate_btn = gr.Button("Generar Singing", variant="primary")
+            with gr.Row():
+                singing_status = gr.Textbox(label="Estado / Logs", lines=4)
+                singing_audio = gr.Audio(label="Salida Singing", type="filepath")
+            singing_debug = gr.Textbox(label="Debug (notas/fonemas)", lines=5)
+            singing_generate_btn.click(
+                singing_generate,
+                [
+                    singing_lyrics,
+                    singing_backend,
+                    singing_style,
+                    singing_notes,
+                    singing_midi,
+                    singing_phoneme_lang,
+                    singing_phonemes,
+                    singing_vibrato,
+                    singing_breathiness,
+                    singing_tension,
+                    singing_energy,
+                    singing_gender,
+                    singing_portamento,
+                    singing_tempo,
+                    singing_rvc_model,
+                ],
+                [singing_status, singing_audio, singing_debug],
+                api_name="singing_generate",
+            )
+            singing_apply_preset.click(
+                singing_load_preset,
+                [singing_preset],
+                [singing_lyrics, singing_notes, singing_style],
+                api_name="singing_apply_preset",
+            )
         with gr.TabItem(i18n("伴奏人声分离&去混响&去回声")):
             with gr.Group():
                 gr.Markdown(
