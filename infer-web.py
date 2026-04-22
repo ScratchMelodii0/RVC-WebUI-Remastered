@@ -876,6 +876,30 @@ def singing_generate(
     rvc_model_name = ""
 
     if len(extra_args) >= 11:
+        midi_file = extra_args[0]
+        phoneme_language = extra_args[1]
+        phoneme_text = extra_args[2]
+        vibrato = extra_args[3]
+        breathiness = extra_args[4]
+        tension = extra_args[5]
+        energy = extra_args[6]
+        gender = extra_args[7]
+        portamento = extra_args[8]
+        tempo_bpm = extra_args[9]
+        rvc_model_name = extra_args[10]
+    else:
+        default_legacy = [0.3, 0.2, 0.2, 0.5, 0.0, 0.3, ""]
+        legacy_values = list(extra_args[:7])
+        legacy_values.extend(default_legacy[len(legacy_values) :])
+        vibrato = legacy_values[0]
+        breathiness = legacy_values[1]
+        tension = legacy_values[2]
+        energy = legacy_values[3]
+        gender = legacy_values[4]
+        portamento = legacy_values[5]
+        rvc_model_name = legacy_values[6]
+
+    midi_path = midi_file if isinstance(midi_file, str) else ""
         (
             midi_file,
             phoneme_language,
