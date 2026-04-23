@@ -864,6 +864,9 @@ def singing_generate(
     backend,
     style_prompt,
     midi_or_notes,
+    midi_file,
+    phoneme_language,
+    phoneme_text,
     *extra_args,
 ):
     # Compatibilidad hacia atrás:
@@ -933,6 +936,10 @@ def singing_generate(
     energy,
     gender,
     portamento,
+    tempo_bpm,
+    rvc_model_name,
+):
+    midi_path = midi_file if isinstance(midi_file, str) else ""
     rvc_model_name,
     )
     request = SingingRequest(
