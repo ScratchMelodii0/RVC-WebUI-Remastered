@@ -867,6 +867,69 @@ def singing_generate(
     midi_file,
     phoneme_language,
     phoneme_text,
+    *extra_args,
+):
+    # Compatibilidad hacia atrás:
+    # - firma vieja: (vibrato, breathiness, tension, energy, gender, portamento, rvc_model_name)
+    # - firma nueva: (midi_file, phoneme_language, phoneme_text, vibrato, breathiness, tension, energy, gender, portamento, tempo_bpm, rvc_model_name)
+    midi_file = ""
+    phoneme_language = "auto"
+    phoneme_text = ""
+    tempo_bpm = 120
+    rvc_model_name = ""
+
+    if len(extra_args) >= 11:
+        midi_file = extra_args[0]
+        phoneme_language = extra_args[1]
+        phoneme_text = extra_args[2]
+        vibrato = extra_args[3]
+        breathiness = extra_args[4]
+        tension = extra_args[5]
+        energy = extra_args[6]
+        gender = extra_args[7]
+        portamento = extra_args[8]
+        tempo_bpm = extra_args[9]
+        rvc_model_name = extra_args[10]
+    else:
+        default_legacy = [0.3, 0.2, 0.2, 0.5, 0.0, 0.3, ""]
+        legacy_values = list(extra_args[:7])
+        legacy_values.extend(default_legacy[len(legacy_values) :])
+        vibrato = legacy_values[0]
+        breathiness = legacy_values[1]
+        tension = legacy_values[2]
+        energy = legacy_values[3]
+        gender = legacy_values[4]
+        portamento = legacy_values[5]
+        rvc_model_name = legacy_values[6]
+
+    midi_path = midi_file if isinstance(midi_file, str) else ""
+        (
+            midi_file,
+            phoneme_language,
+            phoneme_text,
+            vibrato,
+            breathiness,
+            tension,
+            energy,
+            gender,
+            portamento,
+            tempo_bpm,
+            rvc_model_name,
+        ) = extra_args[:11]
+    else:
+        default_legacy = (0.3, 0.2, 0.2, 0.5, 0.0, 0.3, "")
+        legacy_values = tuple(extra_args[:7]) + default_legacy[len(extra_args[:7]) :]
+        (
+            vibrato,
+            breathiness,
+            tension,
+            energy,
+            gender,
+            portamento,
+            rvc_model_name,
+        ) = legacy_values
+
+    midi_path = midi_file if isinstance(midi_file, str) else ""
     vibrato,
     breathiness,
     tension,
@@ -877,6 +940,8 @@ def singing_generate(
     rvc_model_name,
 ):
     midi_path = midi_file if isinstance(midi_file, str) else ""
+    rvc_model_name,
+    )
     request = SingingRequest(
         lyrics=lyrics,
         backend=backend,
@@ -1310,6 +1375,10 @@ with gr.Blocks(
             gr.Markdown(
                 "### 🎼 SynthRVC: Vocaloid/UTAU-like AI Vocal Synth\n"
                 "Flujo moderno para canto: **lyrics + MIDI/notas + fonemas + estilo + timbre RVC**."
+        with gr.TabItem("Text-to-Singing / AI Vocal Synth"):
+            gr.Markdown(
+                "### 🎼 Text-to-Singing\n"
+                "Soporta flujo texto + notas/MIDI + estilo, con controles tipo vocal synth (vibrato, breathiness, tensión, energía, portamento)."
             )
             with gr.Row():
                 with gr.Column():
@@ -1327,6 +1396,10 @@ with gr.Blocks(
                         label="Subir archivo MIDI (.mid/.midi)",
                         file_types=[".mid", ".midi"],
                         type="filepath",
+                    )
+                        label="Notas/MIDI/LAB/UST (texto simple por ahora)",
+                        lines=6,
+                        placeholder="Ejemplo: C4:0.5 D4:0.5 E4:1.0 | o pega contenido parseado.",
                     )
                     singing_style = gr.Textbox(
                         label="Prompt de estilo",
@@ -1356,6 +1429,12 @@ with gr.Blocks(
                         interactive=True,
                     )
                     singing_apply_preset = gr.Button("Aplicar preset", variant="secondary")
+                    singing_backend = gr.Dropdown(
+                        label="Backend Singing",
+                        choices=singing_pipeline.available_backends(),
+                        value="tts_pitch_rvc",
+                        interactive=True,
+                    )
                 with gr.Column():
                     singing_vibrato = gr.Slider(0, 1, value=0.3, step=0.01, label="Vibrato")
                     singing_breathiness = gr.Slider(0, 1, value=0.2, step=0.01, label="Breathiness")
@@ -1402,6 +1481,11 @@ with gr.Blocks(
                 [singing_preset],
                 [singing_lyrics, singing_notes, singing_style],
                 api_name="singing_apply_preset",
+            )
+                    singing_rvc_model,
+                ],
+                [singing_status, singing_audio],
+                api_name="singing_generate",
             )
         with gr.TabItem(i18n("伴奏人声分离&去混响&去回声")):
             with gr.Group():
